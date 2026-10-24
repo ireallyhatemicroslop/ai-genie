@@ -14,5 +14,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "RtmutexLab"
+rootProject.name = "GalaxyA03sRootGuide"
 include(":app")

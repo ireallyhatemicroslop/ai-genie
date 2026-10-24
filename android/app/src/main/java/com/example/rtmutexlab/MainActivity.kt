@@ -1,5 +1,7 @@
 package com.example.rtmutexlab
 
+import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -18,18 +20,20 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -40,37 +44,38 @@ private val Ink = Color(0xFF202923)
 private val Muted = Color(0xFF68736C)
 private val Green = Color(0xFF176B50)
 private val GreenPale = Color(0xFFDCECE2)
-private val Red = Color(0xFFBB4F3B)
-private val RedPale = Color(0xFFF4E1D9)
+private val GoldPale = Color(0xFFFFF3D5)
 private val Panel = Color(0xFFFFFEFA)
 
-private enum class CleanupPath { Buggy, Fixed }
-
-private data class SimulationStage(
+private data class GuideStep(
     val title: String,
-    val commonCopy: String? = null,
-    val buggyCopy: String? = null,
-    val fixedCopy: String? = null,
+    val description: String,
 )
 
-private val stages = listOf(
-    SimulationStage(
-        title = "Waiting",
-        commonCopy = "Task B is queued for the proxy lock. Its pi_blocked_on field points to that lock.",
+private val guideSteps = listOf(
+    GuideStep(
+        "Confirm your exact model",
+        "Open Settings > About phone and note the full model number (for example, SM-A037…). A03s variants and carrier builds are not interchangeable. This guide does not certify any variant as unlockable.",
     ),
-    SimulationStage(
-        title = "Rollback begins",
-        commonCopy = "Task A called futex_requeue and starts rolling back the proxy-lock attempt. Task A is current; Task B is the waiter.",
+    GuideStep(
+        "Check unlock eligibility first",
+        "Look for OEM unlocking in Developer options. If it is missing, unavailable, or the bootloader is carrier/enterprise locked, stop here and confirm eligibility for your exact model and region. Do not try exploits or cross-flash firmware.",
     ),
-    SimulationStage(
-        title = "Cleanup",
-        buggyCopy = "Buggy cleanup uses current (Task A) for dequeue-related work, even though Task B owns the waiter state.",
-        fixedCopy = "Fixed cleanup uses waiter->task (Task B) for dequeue, PI-lock handling, and priority-chain adjustment.",
+    GuideStep(
+        "Back up and understand the trade-offs",
+        "Unlocking the bootloader erases user data. Rooting trips Samsung Knox permanently and can affect warranty, Secure Folder, payments, banking apps, and updates. Back up anything you need before proceeding.",
     ),
-    SimulationStage(
-        title = "Result",
-        buggyCopy = "Task B can retain a stale pi_blocked_on pointer, and the wrong priority waiter may be adjusted.",
-        fixedCopy = "Task B is dequeued under its PI lock and its blocked-on state is cleared. The correct priority waiter is adjusted.",
+    GuideStep(
+        "Get matching stock firmware",
+        "Use firmware for your exact model, region/CSC, and current build. Keep an untouched copy. Never use another A03s variant's files; mismatched firmware can make the phone unbootable.",
+    ),
+    GuideStep(
+        "Patch with the official Magisk app",
+        "Follow Magisk's Samsung-specific installation instructions to patch the AP file from your matching firmware. Keep the resulting patched file private and follow the official guide for the required installation and first-boot steps.",
+    ),
+    GuideStep(
+        "Verify and keep a recovery plan",
+        "Only proceed with the official, model-matched instructions. Keep stock firmware available so you can restore the device if needed. This companion does not unlock, patch, flash, or grant root access.",
     ),
 )
 
@@ -88,25 +93,18 @@ class MainActivity : ComponentActivity() {
                     onSurface = Ink,
                 ),
             ) {
-                RtmutexLabScreen()
+                A03sGuideScreen()
             }
         }
     }
 }
 
 @Composable
-private fun RtmutexLabScreen() {
-    var path by remember { mutableStateOf(CleanupPath.Buggy) }
-    var stageIndex by remember { mutableIntStateOf(0) }
-    val stage = stages[stageIndex]
-    val isBuggy = path == CleanupPath.Buggy
-    val finalBuggy = isBuggy && stageIndex == 3
-    val hasCleanupStarted = stageIndex >= 2
-    val bodyCopy = when {
-        stage.commonCopy != null -> stage.commonCopy
-        isBuggy -> stage.buggyCopy.orEmpty()
-        else -> stage.fixedCopy.orEmpty()
-    }
+private fun A03sGuideScreen() {
+    var modelNumber by rememberSaveable { mutableStateOf("") }
+    var completedSteps by remember { mutableStateOf(setOf<Int>()) }
+    val context = LocalContext.current
+    val completedCount = completedSteps.size
 
     Column(
         modifier = Modifier
@@ -121,239 +119,139 @@ private fun RtmutexLabScreen() {
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            MonoLabel("KERNEL NOTES / 01", Ink)
-            MonoLabel("INTERACTIVE EXPLAINER", Muted)
+            MonoLabel("DEVICE NOTES / 01", Ink)
+            MonoLabel("SAMSUNG A03S", Muted)
         }
 
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            MonoLabel("CVE-2026-43499 · LINUX RTMUTEX", Green)
+            MonoLabel("BOOTLOADER + MAGISK GUIDE", Green)
             Text(
-                text = "Waiter is not current.",
+                text = "A careful route to root.",
                 style = MaterialTheme.typography.headlineLarge,
-                fontSize = 39.sp,
+                fontSize = 38.sp,
                 lineHeight = 42.sp,
                 fontWeight = FontWeight.Normal,
                 fontFamily = FontFamily.Serif,
                 color = Ink,
             )
             Text(
-                text = "Proxy-lock rollback used the caller's task where it needed the lock waiter's task. Compare the buggy path with the fix.",
+                text = "A preparation checklist for Samsung Galaxy A03s. Compatibility depends on your exact model, region, and bootloader status.",
                 style = MaterialTheme.typography.bodyLarge,
                 color = Muted,
                 lineHeight = 24.sp,
             )
         }
 
-        Surface(color = Color(0xFFFFFDF5), shape = MaterialTheme.shapes.extraSmall) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(14.dp),
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                verticalAlignment = Alignment.Top,
+        Surface(color = GoldPale, shape = MaterialTheme.shapes.extraSmall) {
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(14.dp),
+                verticalArrangement = Arrangement.spacedBy(5.dp),
             ) {
-                Text("!", color = Red, fontWeight = FontWeight.Bold)
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    MonoLabel("SIMULATION ONLY", Ink)
-                    Text(
-                        "This app models the reported state mismatch in memory. It does not access the device kernel, trigger the CVE, or test device vulnerability.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = Ink,
-                        lineHeight = 19.sp,
-                    )
-                }
+                MonoLabel("READ BEFORE YOU START", Ink)
+                Text(
+                    "This is a guide, not a one-tap root or exploit. Bootloader unlocking wipes your data; rooting trips Knox permanently. Some carrier or regional variants may not be unlockable.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Ink,
+                    lineHeight = 19.sp,
+                )
             }
         }
 
         Surface(color = Panel, shape = MaterialTheme.shapes.extraSmall) {
             Column(
-                modifier = Modifier.padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(14.dp),
+                modifier = Modifier.fillMaxWidth().padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                Row(
+                Text("Your device", style = MaterialTheme.typography.titleLarge, color = Ink)
+                OutlinedTextField(
+                    value = modelNumber,
+                    onValueChange = { modelNumber = it },
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text("Proxy-lock rollback", style = MaterialTheme.typography.titleLarge, color = Ink)
-                    MonoLabel("FUTEX_REQUEUE", Muted)
-                }
+                    label = { Text("Exact model number") },
+                    placeholder = { Text("e.g. SM-A037…") },
+                    singleLine = true,
+                )
+                Text(
+                    "Find it in Settings > About phone. Entering a model does not verify that it can be unlocked.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Muted,
+                    lineHeight = 18.sp,
+                )
+            }
+        }
 
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    ModeButton(
-                        text = "Buggy",
-                        selected = isBuggy,
-                        modifier = Modifier.weight(1f),
-                        onClick = { path = CleanupPath.Buggy; stageIndex = 0 },
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text("Preparation checklist", style = MaterialTheme.typography.titleLarge, color = Ink)
+            MonoLabel("$completedCount / ${guideSteps.size}", Green)
+        }
+
+        guideSteps.forEachIndexed { index, step ->
+            val isCompleted = index in completedSteps
+            Surface(
+                color = if (isCompleted) GreenPale else Panel,
+                shape = MaterialTheme.shapes.extraSmall,
+            ) {
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(15.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    MonoLabel("STEP ${index + 1}", Green)
+                    Text(step.title, style = MaterialTheme.typography.titleMedium, color = Ink)
+                    Text(
+                        step.description,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = Muted,
+                        lineHeight = 21.sp,
                     )
-                    ModeButton(
-                        text = "Fixed",
-                        selected = !isBuggy,
-                        modifier = Modifier.weight(1f),
-                        onClick = { path = CleanupPath.Fixed; stageIndex = 0 },
-                    )
-                }
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(5.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    stages.forEachIndexed { index, _ ->
-                        Surface(
-                            modifier = Modifier.weight(1f).height(5.dp),
-                            color = if (index <= stageIndex) Green else Color(0xFFD5D9D1),
-                            shape = MaterialTheme.shapes.extraSmall,
-                        ) {}
-                    }
-                }
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    stages.forEach { MonoLabel(it.title.uppercase(), Muted, size = 8) }
-                }
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    TaskPanel(
-                        role = "CALLER · CURRENT",
-                        name = "Task A",
-                        state = when {
-                            stageIndex < 2 -> "Starts rollback"
-                            isBuggy -> "Used for cleanup (wrong task)"
-                            else -> "Caller; not the waiter"
+                    OutlinedButton(
+                        onClick = {
+                            completedSteps = if (isCompleted) {
+                                completedSteps - index
+                            } else {
+                                completedSteps + index
+                            }
                         },
-                        tint = if (hasCleanupStarted && isBuggy) RedPale else Panel,
-                        modifier = Modifier.weight(1f),
-                    )
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        MonoLabel("QUEUE", Muted, size = 8)
-                        Spacer(Modifier.height(5.dp))
-                        Text(
-                            if (finalBuggy) "Task B\nretained" else if (stageIndex == 3) "Empty" else "Task B",
-                            modifier = Modifier.background(
-                                if (stageIndex == 3 && !isBuggy) GreenPale else Panel,
-                            ).padding(horizontal = 7.dp, vertical = 10.dp),
-                            color = if (finalBuggy) Red else Green,
-                            fontFamily = FontFamily.Monospace,
-                            fontSize = 10.sp,
-                            lineHeight = 14.sp,
-                        )
-                    }
-                    TaskPanel(
-                        role = "LOCK WAITER · WAITER->TASK",
-                        name = "Task B",
-                        state = if (stageIndex == 3 && !isBuggy) "pi_blocked_on = null"
-                        else if (finalBuggy) "pi_blocked_on may be stale"
-                        else "pi_blocked_on = lock",
-                        tint = when {
-                            finalBuggy -> RedPale
-                            hasCleanupStarted && !isBuggy -> GreenPale
-                            else -> Panel
-                        },
-                        modifier = Modifier.weight(1f),
-                    )
-                }
-
-                Surface(
-                    color = Color(0xFFF5F6F1),
-                    shape = MaterialTheme.shapes.extraSmall,
-                ) {
-                    Column(
-                        modifier = Modifier.fillMaxWidth().padding(13.dp),
-                        verticalArrangement = Arrangement.spacedBy(5.dp),
+                        modifier = Modifier.align(Alignment.End),
                     ) {
-                        MonoLabel("STEP ${stageIndex + 1} OF 4 · ${stage.title.uppercase()}", Muted, size = 9)
-                        Text(bodyCopy, style = MaterialTheme.typography.bodyMedium, color = Ink, lineHeight = 21.sp)
+                        Text(if (isCompleted) "Marked ready" else "Mark reviewed")
                     }
-                }
-
-                Button(
-                    onClick = { stageIndex = if (stageIndex == stages.lastIndex) 0 else stageIndex + 1 },
-                    modifier = Modifier.fillMaxWidth().height(48.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Green),
-                ) {
-                    Text(if (stageIndex == stages.lastIndex) "Restart sequence" else "Step through")
                 }
             }
         }
 
-        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text("What the fix changes", style = MaterialTheme.typography.titleMedium, color = Ink)
-            Text(
-                "Cleanup consistently targets waiter->task for dequeue, PI-lock handling, blocked-on state, and priority-chain adjustment.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = Muted,
-                lineHeight = 21.sp,
-            )
+        Button(
+            onClick = {
+                context.startActivity(
+                    Intent(Intent.ACTION_VIEW, Uri.parse("https://topjohnwu.github.io/Magisk/install.html")),
+                )
+            },
+            modifier = Modifier.fillMaxWidth().height(48.dp),
+            colors = ButtonDefaults.buttonColors(containerColor = Green),
+        ) {
+            Text("Open official Magisk instructions")
         }
 
+        Spacer(Modifier.height(4.dp))
         Text(
-            "Linux kernel issue, not an Android application API. Device exposure depends on its kernel and vendor patches.",
+            "No device access · No exploit payloads · No firmware included",
             style = MaterialTheme.typography.labelSmall,
             color = Muted,
-            lineHeight = 17.sp,
         )
     }
 }
 
 @Composable
-private fun ModeButton(
-    text: String,
-    selected: Boolean,
-    modifier: Modifier = Modifier,
-    onClick: () -> Unit,
-) {
-    if (selected) {
-        Button(
-            onClick = onClick,
-            modifier = modifier.height(42.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = Ink),
-        ) { Text(text) }
-    } else {
-        OutlinedButton(onClick = onClick, modifier = modifier.height(42.dp)) { Text(text) }
-    }
-}
-
-@Composable
-private fun TaskPanel(
-    role: String,
-    name: String,
-    state: String,
-    tint: Color,
-    modifier: Modifier = Modifier,
-) {
-    Surface(
-        modifier = modifier.height(116.dp),
-        color = tint,
-        shape = MaterialTheme.shapes.extraSmall,
-        tonalElevation = 0.dp,
-    ) {
-        Column(
-            modifier = Modifier.padding(9.dp),
-            verticalArrangement = Arrangement.spacedBy(5.dp),
-        ) {
-            MonoLabel(role, Muted, size = 7)
-            Text(name, style = MaterialTheme.typography.titleMedium, color = Ink)
-            Text(
-                state,
-                style = MaterialTheme.typography.labelSmall,
-                color = Muted,
-                lineHeight = 14.sp,
-            )
-        }
-    }
-}
-
-@Composable
-private fun MonoLabel(text: String, color: Color, size: Int = 9) {
+private fun MonoLabel(text: String, color: Color) {
     Text(
         text = text,
         color = color,
         fontFamily = FontFamily.Monospace,
         fontWeight = FontWeight.Medium,
-        fontSize = size.sp,
-        lineHeight = (size + 4).sp,
+        fontSize = 9.sp,
+        lineHeight = 13.sp,
     )
 }
