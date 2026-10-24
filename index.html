@@ -1,0 +1,228 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f4f2eb">
+  <title>Waiter / Current - CVE-2026-43499</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --paper: #f4f2eb;
+      --ink: #202923;
+      --muted: #68736c;
+      --line: #d5d9d1;
+      --green: #176b50;
+      --green-pale: #dcece2;
+      --red: #bb4f3b;
+      --red-pale: #f4e1d9;
+      --gold: #d0a642;
+      --panel: #fffefa;
+      --mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+      --serif: Georgia, "Times New Roman", serif;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background-color: var(--paper);
+      background-image: radial-gradient(#d7dbd2 0.65px, transparent 0.65px);
+      background-size: 15px 15px;
+      color: var(--ink);
+      font-family: var(--serif);
+    }
+    button { font: inherit; }
+    .shell { width: min(760px, 100%); margin: 0 auto; padding: 22px 18px 48px; }
+    .topline { display: flex; justify-content: space-between; align-items: center; gap: 12px; border-bottom: 1px solid var(--line); padding-bottom: 13px; }
+    .brand, .classification, .eyebrow, .tag, .step-label, .task-role, .queue-label, .meta, .button, .status, .timeline, .footer { font-family: var(--mono); }
+    .brand { font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }
+    .classification { color: var(--muted); font-size: 10px; text-align: right; }
+    header { padding: 34px 0 24px; }
+    .eyebrow { color: var(--green); font-size: 11px; font-weight: 700; text-transform: uppercase; }
+    h1 { max-width: 600px; margin: 10px 0 12px; font-size: clamp(34px, 9vw, 55px); font-weight: 400; line-height: 0.98; }
+    .intro { max-width: 570px; margin: 0; color: #4e5a52; font-size: 16px; line-height: 1.55; }
+    .notice { display: flex; gap: 11px; align-items: flex-start; margin: 18px 0 25px; padding: 12px 14px; border-left: 3px solid var(--gold); background: #fffdf5; font-size: 13px; line-height: 1.45; }
+    .notice strong { display: block; margin-bottom: 2px; font-family: var(--mono); font-size: 10px; letter-spacing: 0.07em; text-transform: uppercase; }
+    .panel { border: 1px solid var(--line); background: var(--panel); }
+    .panel-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 14px 16px; border-bottom: 1px solid var(--line); }
+    .panel-head h2 { margin: 0; font-size: 18px; font-weight: 400; }
+    .tag { color: var(--muted); font-size: 10px; }
+    .controls { display: flex; gap: 8px; padding: 14px 16px 8px; }
+    .button { min-height: 42px; padding: 0 13px; border: 1px solid var(--line); border-radius: 3px; background: var(--panel); color: var(--ink); cursor: pointer; font-size: 11px; font-weight: 700; }
+    .button[aria-pressed="true"] { border-color: var(--ink); background: var(--ink); color: white; }
+    .button.primary { margin-left: auto; border-color: var(--green); background: var(--green); color: white; }
+    .button:hover { filter: brightness(0.96); }
+    .button:focus-visible { outline: 3px solid var(--gold); outline-offset: 2px; }
+    .stage-wrap { padding: 10px 16px 0; }
+    .stage-row { display: flex; align-items: center; gap: 8px; }
+    .stage-dot { width: 9px; height: 9px; flex: 0 0 auto; border: 1px solid #9aa39b; border-radius: 50%; background: var(--panel); }
+    .stage-dot.done { border-color: var(--green); background: var(--green); }
+    .stage-line { height: 1px; flex: 1; background: var(--line); }
+    .stage-labels { display: flex; justify-content: space-between; gap: 4px; margin: 8px 0 0; color: var(--muted); font-family: var(--mono); font-size: 9px; }
+    .diagram { display: grid; grid-template-columns: minmax(0, 1fr) 92px minmax(0, 1fr); align-items: center; gap: 10px; min-height: 178px; padding: 22px 16px; }
+    .task { min-width: 0; padding: 13px 12px; border: 1px solid var(--line); background: white; transition: border-color 180ms ease, background 180ms ease; }
+    .task.is-affected { border-color: var(--red); background: var(--red-pale); }
+    .task.is-correct { border-color: var(--green); background: var(--green-pale); }
+    .task-role { color: var(--muted); font-size: 9px; text-transform: uppercase; }
+    .task-name { display: block; margin: 5px 0; font-size: 23px; }
+    .task-state { min-height: 30px; color: #536057; font-family: var(--mono); font-size: 10px; line-height: 1.45; overflow-wrap: anywhere; }
+    .queue { text-align: center; }
+    .queue-label { margin-bottom: 8px; color: var(--muted); font-size: 9px; text-transform: uppercase; }
+    .queue-slot { display: grid; place-items: center; min-height: 52px; border: 1px dashed #a9b2aa; color: var(--muted); font-family: var(--mono); font-size: 10px; transition: all 180ms ease; }
+    .queue-slot.occupied { border-style: solid; border-color: var(--green); background: var(--green-pale); color: var(--green); }
+    .arrow { margin-top: 6px; color: var(--muted); font-family: var(--mono); font-size: 10px; }
+    .readout { min-height: 89px; margin: 0 16px 16px; padding: 13px 14px; border-left: 3px solid var(--line); background: #f5f6f1; }
+    .readout[data-kind="bug"] { border-color: var(--red); }
+    .readout[data-kind="fixed"] { border-color: var(--green); }
+    .step-label { margin: 0 0 5px; color: var(--muted); font-size: 9px; text-transform: uppercase; }
+    .readout p:last-child { margin: 0; font-size: 14px; line-height: 1.45; }
+    .explain { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; margin-top: 18px; border: 1px solid var(--line); background: var(--line); }
+    .explain article { padding: 15px; background: var(--panel); }
+    .explain h3 { margin: 0 0 7px; font-size: 16px; font-weight: 400; }
+    .explain p { margin: 0; color: #526057; font-size: 12px; line-height: 1.5; }
+    .meta { margin-top: 19px; color: var(--muted); font-size: 10px; line-height: 1.7; }
+    .meta a { color: var(--green); }
+    .footer { margin-top: 25px; padding-top: 12px; border-top: 1px solid var(--line); color: var(--muted); font-size: 9px; }
+    @media (max-width: 480px) {
+      .shell { padding: 16px 13px 35px; }
+      header { padding-top: 27px; }
+      .controls { flex-wrap: wrap; padding-right: 12px; padding-left: 12px; }
+      .button { padding: 0 10px; }
+      .button.primary { flex: 1 0 100%; margin-left: 0; }
+      .diagram { grid-template-columns: minmax(0, 1fr) 58px minmax(0, 1fr); gap: 6px; padding: 20px 10px; }
+      .task { padding: 11px 8px; }
+      .task-name { font-size: 20px; }
+      .queue-slot { min-height: 48px; font-size: 9px; }
+      .explain { grid-template-columns: 1fr; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { scroll-behavior: auto !important; transition-duration: 0.01ms !important; }
+    }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <div class="topline">
+      <div class="brand">Kernel notes / 01</div>
+      <div class="classification">INTERACTIVE EXPLAINER</div>
+    </div>
+
+    <header>
+      <div class="eyebrow">CVE-2026-43499 · Linux rtmutex</div>
+      <h1>Waiter is not current.</h1>
+      <p class="intro">A proxy-lock rollback used the caller's task where it needed the lock waiter's task. Step through the cleanup and compare the buggy path with the fix.</p>
+    </header>
+
+    <aside class="notice" aria-label="Scope note">
+      <div aria-hidden="true">!</div>
+      <div><strong>Simulation only</strong>This Android-friendly explainer models the reported state mismatch. It does not access the device kernel, trigger the CVE, or test whether a device is vulnerable.</div>
+    </aside>
+
+    <section class="panel" aria-labelledby="sim-title">
+      <div class="panel-head">
+        <h2 id="sim-title">Proxy-lock rollback</h2>
+        <span class="tag">FUTEX_REQUEUE</span>
+      </div>
+      <div class="controls" role="group" aria-label="Cleanup implementation">
+        <button class="button" id="bug-mode" type="button" aria-pressed="true">Buggy cleanup</button>
+        <button class="button" id="fixed-mode" type="button" aria-pressed="false">Fixed cleanup</button>
+        <button class="button primary" id="step-button" type="button">Step through</button>
+      </div>
+      <div class="stage-wrap" aria-label="Simulation progress">
+        <div class="stage-row" aria-hidden="true">
+          <span class="stage-dot done"></span><span class="stage-line"></span>
+          <span class="stage-dot"></span><span class="stage-line"></span>
+          <span class="stage-dot"></span><span class="stage-line"></span>
+          <span class="stage-dot"></span>
+        </div>
+        <div class="stage-labels"><span>Waiting</span><span>Rollback</span><span>Cleanup</span><span>Result</span></div>
+      </div>
+      <div class="diagram" aria-live="polite">
+        <div class="task" id="current-card">
+          <span class="task-role">Caller · current</span>
+          <strong class="task-name">Task A</strong>
+          <div class="task-state" id="current-state">Starts rollback</div>
+        </div>
+        <div class="queue">
+          <div class="queue-label">Wait queue</div>
+          <div class="queue-slot occupied" id="queue-slot">Task B</div>
+          <div class="arrow" id="queue-note">waiting on lock</div>
+        </div>
+        <div class="task" id="waiter-card">
+          <span class="task-role">Lock waiter · waiter-&gt;task</span>
+          <strong class="task-name">Task B</strong>
+          <div class="task-state" id="waiter-state">pi_blocked_on = lock</div>
+        </div>
+      </div>
+      <div class="readout" id="readout" data-kind="neutral" aria-live="polite">
+        <p class="step-label" id="step-title">Step 1 of 4 · Waiting</p>
+        <p id="step-copy">Task B is queued for the proxy lock. Its pi_blocked_on field points to that lock.</p>
+      </div>
+    </section>
+
+    <section class="explain" aria-label="What changes">
+      <article>
+        <h3>Buggy path</h3>
+        <p>Cleanup operates on Task A (`current`) instead of Task B (`waiter-&gt;task`). The wrong task's lock and priority state are used; Task B can retain a stale blocked-on pointer.</p>
+      </article>
+      <article>
+        <h3>Fixed path</h3>
+        <p>Cleanup consistently targets Task B, including its PI lock, blocked-on state, and priority-chain adjustment. The waiter is removed from the correct state.</p>
+      </article>
+    </section>
+
+    <p class="meta">The issue is in the Linux kernel's real-time mutex code, not in an Android application API. Android devices may use Linux kernels, but exposure depends on the device's kernel and vendor fixes. <a href="https://nvd.nist.gov/vuln/detail/CVE-2026-43499" target="_blank" rel="noreferrer">NVD record</a></p>
+    <footer class="footer">CONCEPTUAL MODEL · NO KERNEL CALLS · NO DEVICE TESTING</footer>
+  </main>
+
+  <script>
+    const bugMode = document.querySelector("#bug-mode");
+    const fixedMode = document.querySelector("#fixed-mode");
+    const stepButton = document.querySelector("#step-button");
+    const readout = document.querySelector("#readout");
+    const stepTitle = document.querySelector("#step-title");
+    const stepCopy = document.querySelector("#step-copy");
+    const currentCard = document.querySelector("#current-card");
+    const waiterCard = document.querySelector("#waiter-card");
+    const currentState = document.querySelector("#current-state");
+    const waiterState = document.querySelector("#waiter-state");
+    const queueSlot = document.querySelector("#queue-slot");
+    const queueNote = document.querySelector("#queue-note");
+    const dots = [...document.querySelectorAll(".stage-dot")];
+    let mode = "bug";
+    let step = 0;
+
+    const stages = [
+      { title: "Waiting", copy: "Task B is queued for the proxy lock. Its pi_blocked_on field points to that lock." },
+      { title: "Rollback begins", copy: "Task A called futex_requeue and starts rolling back the proxy-lock attempt. Task A is current; Task B is still the waiter." },
+      { title: "Cleanup", bug: "Buggy remove_waiter() uses current (Task A) for dequeue-related work, even though Task B owns the waiter state.", fixed: "Fixed remove_waiter() uses waiter->task (Task B) for dequeue, PI-lock handling, and priority-chain adjustment." },
+      { title: "Result", bug: "Task B can remain linked in the wait state with a stale pi_blocked_on pointer. The mismatch also means the wrong priority waiter is adjusted.", fixed: "Task B is dequeued under its PI lock and its blocked-on state is cleared. The correct priority waiter is adjusted." }
+    ];
+
+    function render() {
+      const stage = stages[step];
+      const isBug = mode === "bug";
+      bugMode.setAttribute("aria-pressed", String(isBug));
+      fixedMode.setAttribute("aria-pressed", String(!isBug));
+      stepTitle.textContent = `Step ${step + 1} of 4 · ${stage.title}`;
+      stepCopy.textContent = step < 2 ? stage.copy : stage[mode];
+      readout.dataset.kind = step < 2 ? "neutral" : mode;
+      dots.forEach((dot, index) => dot.classList.toggle("done", index <= step));
+      currentCard.classList.toggle("is-affected", isBug && step >= 2);
+      currentCard.classList.toggle("is-correct", !isBug && step >= 2);
+      waiterCard.classList.toggle("is-affected", isBug && step >= 3);
+      waiterCard.classList.toggle("is-correct", !isBug && step >= 2);
+      queueSlot.classList.toggle("occupied", step < 3 || isBug);
+      queueSlot.textContent = step >= 3 && !isBug ? "Empty" : "Task B";
+      queueNote.textContent = step >= 3 && !isBug ? "dequeued" : step >= 3 ? "stale waiter state" : "waiting on lock";
+      currentState.textContent = step < 2 ? "Starts rollback" : isBug ? "Used for cleanup (wrong task)" : "Caller; not the waiter";
+      waiterState.textContent = step >= 3 && !isBug ? "pi_blocked_on = null" : step >= 3 ? "pi_blocked_on may be stale" : "pi_blocked_on = lock";
+      stepButton.textContent = step === 3 ? "Restart sequence" : "Step through";
+    }
+
+    bugMode.addEventListener("click", () => { mode = "bug"; step = 0; render(); });
+    fixedMode.addEventListener("click", () => { mode = "fixed"; step = 0; render(); });
+    stepButton.addEventListener("click", () => { step = step === 3 ? 0 : step + 1; render(); });
+    render();
+  </script>
+</body>
+</html>
